@@ -1,0 +1,120 @@
+name: CI + CD
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+  
+jobs:
+  Build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        run: npm install -g pnpm 
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install Dependencies
+        run: pnpm install
+
+      - name: Build Project
+        run: pnpm run build  # Generates `dist/` folder
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-dist
+          path: dist  # Upload the `dist` folder for later use
+
+  DeployDev:
+    name: Deploy to Dev (Dev)
+    if: github.event_name == 'pull_request' 
+    needs: [Build]
+    runs-on: ubuntu-latest
+    environment:
+      name: Development
+      url: 'http://localhost:5173/'  
+    steps:
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-dist
+          path: dist  
+
+
+  # DeployStaging:
+  #   name: Deploy to Staging (EC2)
+  #   if: github.event.ref == 'refs/heads/master'
+  #   needs: [Build]
+  #   runs-on: ubuntu-latest
+  #   environment:
+  #     name: Staging
+  #     url: 'http://44.202.30.0/'
+
+  #   steps:
+  #     - name: Download Build Artifact
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: build-dist
+  #         path: dist
+
+  #     - name: Setup SSH Key
+  #       run: |
+  #         mkdir -p ~/.ssh
+  #         echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+  #         chmod 600 ~/.ssh/id_rsa
+  #         ssh-keyscan -H ${{ secrets.EC2_HOST_STAGING }} >> ~/.ssh/known_hosts
+
+  #     - name: Fix Permissions on Staging Server
+  #       run: |
+  #         ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_STAGING }} "sudo mkdir -p /var/www/staging"
+  #         ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_STAGING }} "sudo chown -R ${{ secrets.EC2_USER }}:${{ secrets.EC2_USER }} /var/www/staging"
+  #         ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_STAGING }} "sudo chmod -R 755 /var/www/staging"
+
+  #     - name: Deploy to Staging Server
+  #       run: |
+  #         scp -i ~/.ssh/id_rsa -r dist/* ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_STAGING }}:/var/www/staging/
+  #         ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_STAGING }} "sudo systemctl restart nginx"
+
+  # DeployProd:
+  #   name: Deploy to Production (EC2)
+  #   needs: [DeployStaging]
+  #   runs-on: ubuntu-latest
+  #   environment:
+  #     name: Production
+  #     url: 'http://18.212.201.3/'
+
+  #   steps:
+  #     - name: Download Build Artifact
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: build-dist
+  #         path: dist
+
+  #     - name: Setup SSH Key
+  #       run: |
+  #         mkdir -p ~/.ssh
+  #         echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+  #         chmod 600 ~/.ssh/id_rsa
+  #         ssh-keyscan -H ${{ secrets.EC2_HOST_PROD }} >> ~/.ssh/known_hosts
+
+  #     - name: Fix Permissions on Production Server
+  #       run: |
+  #         ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_PRODUSER }}@${{ secrets.EC2_HOST_PROD }} "sudo mkdir -p /var/www/production"
+  #         ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_PRODUSER }}@${{ secrets.EC2_HOST_PROD }} "sudo chown -R ${{ secrets.EC2_PRODUSER }}:${{ secrets.EC2_PRODUSER }} /var/www/production"
+  #         ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_PRODUSER }}@${{ secrets.EC2_HOST_PROD }} "sudo chmod -R 755 /var/www/production"
+
+  #     - name: Deploy to Production Server
+  #       run: |
+  #         scp -i ~/.ssh/id_rsa -r dist/* ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }}:/var/www/production/
+  #         ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST_PROD }} "sudo systemctl restart nginx"
